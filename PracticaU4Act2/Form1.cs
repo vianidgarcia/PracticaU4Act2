@@ -1,13 +1,15 @@
+using System.DirectoryServices;
+
 namespace PracticaU4Act2;
 
-// El formulario solo atiende eventos y muestra resultados; la lógica está en ArbolBinarioBusqueda.
+// The form only handles events and displays results; the logic is in BinarySearchTree.
 public partial class Form1 : Form
 {
-    private const int MaximoClavesEnRecorrido = 300;
+    private const int MaxKeysInTraversal = 300;
 
-    private readonly ArbolBinarioBusqueda _arbol = new();
-    private Dictionary<NodoArbol, PointF> _posiciones = new();
-    private Resaltado _resaltado = Resaltado.Ninguno;
+    private readonly BinarySearchTree _tree = new();
+    private Dictionary<TreeNode, PointF> _positions = new();
+    private Highlight _highlight = Highlight.None;
 
     public Form1()
     {
@@ -16,210 +18,210 @@ public partial class Form1 : Form
 
     private void Form1_Load(object? sender, EventArgs e)
     {
-        btnEjemplo_Click(sender, e);
+        btnSample_Click(sender, e);
     }
 
-    private void txtClave_KeyDown(object? sender, KeyEventArgs e)
+    private void txtKey_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Enter)
         {
             e.SuppressKeyPress = true;
-            btnInsertar_Click(sender, e);
+            btnInsert_Click(sender, e);
         }
     }
 
-    private void btnInsertar_Click(object? sender, EventArgs e)
+    private void btnInsert_Click(object? sender, EventArgs e)
     {
-        if (!IntentarLeerClave(out int clave))
+        if (!TryReadKey(out int key))
             return;
 
-        ResultadoOperacion r = _arbol.Insertar(clave);
-        _resaltado = r.Exito ? new Resaltado(Array.Empty<int>(), clave, true) : Resaltado.Ninguno;
-        MostrarEstado(r.Mensaje);
-        txtClave.SelectAll();
-        ActualizarVista();
+        OperationResult r = _tree.Insert(key);
+        _highlight = r.Success ? new Highlight(Array.Empty<int>(), key, true) : Highlight.None;
+        ShowStatus(r.Message);
+        txtKey.SelectAll();
+        UpdateView();
     }
 
-    private void btnBuscar_Click(object? sender, EventArgs e)
+    private void btnSearch_Click(object? sender, EventArgs e)
     {
-        if (!IntentarLeerClave(out int clave))
+        if (!TryReadKey(out int key))
             return;
 
-        ResultadoBusqueda r = _arbol.Buscar(clave);
-        // Si no se encontró, se destaca en rojo el último nodo revisado: ahí se detuvo la búsqueda.
-        int? destacado = null;
-        if (r.Encontrado)
-            destacado = clave;
-        else if (r.Camino.Count > 0)
-            destacado = r.Camino[r.Camino.Count - 1];
-        _resaltado = new Resaltado(r.Camino, destacado, r.Encontrado);
-        MostrarEstado(r.Mensaje);
-        picArbol.Invalidate();
+        SearchResult r = _tree.Search(key);
+        // If it was not found, the last node checked is highlighted in red: that is where the search stopped.
+        int? featured = null;
+        if (r.Found)
+            featured = key;
+        else if (r.Path.Count > 0)
+            featured = r.Path[r.Path.Count - 1];
+        _highlight = new Highlight(r.Path, featured, r.Found);
+        ShowStatus(r.Message);
+        picTree.Invalidate();
     }
 
-    private void btnEliminar_Click(object? sender, EventArgs e)
+    private void btnDelete_Click(object? sender, EventArgs e)
     {
-        if (!IntentarLeerClave(out int clave))
+        if (!TryReadKey(out int key))
             return;
 
-        ResultadoOperacion r = _arbol.Eliminar(clave);
-        _resaltado = Resaltado.Ninguno;
-        MostrarEstado(r.Mensaje);
-        ActualizarVista();
+        OperationResult r = _tree.Delete(key);
+        _highlight = Highlight.None;
+        ShowStatus(r.Message);
+        UpdateView();
     }
 
-    private void btnLimpiar_Click(object? sender, EventArgs e)
+    private void btnClear_Click(object? sender, EventArgs e)
     {
-        _arbol.Limpiar();
-        _resaltado = Resaltado.Ninguno;
-        MostrarEstado("Árbol vaciado.");
-        ActualizarVista();
+        _tree.Clear();
+        _highlight = Highlight.None;
+        ShowStatus("Árbol vaciado.");
+        UpdateView();
     }
 
-    private void btnCargar_Click(object? sender, EventArgs e)
+    private void btnLoad_Click(object? sender, EventArgs e)
     {
         try
         {
-            List<int> claves = EntradaClaves.LeerSecuencia(txtSecuencia.Text);
-            CargarClaves(claves, "Secuencia cargada.");
+            List<int> keys = KeyInput.ReadSequence(txtSequence.Text);
+            LoadKeys(keys, "Secuencia cargada.");
         }
         catch (ArgumentException ex)
         {
-            MostrarEstado(ex.Message);
+            ShowStatus(ex.Message);
         }
     }
 
-    private void btnAleatorio_Click(object? sender, EventArgs e)
+    private void btnRandom_Click(object? sender, EventArgs e)
     {
-        // 15 claves distintas entre 1 y 99 en orden aleatorio.
-        int[] claves = Enumerable.Range(1, 99).OrderBy(_ => Random.Shared.Next()).Take(15).ToArray();
-        txtSecuencia.Text = string.Join(", ", claves);
-        CargarClaves(claves, "Claves aleatorias cargadas.");
+        // 15 distinct keys between 1 and 99 in random order.
+        int[] keys = Enumerable.Range(1, 99).OrderBy(_ => Random.Shared.Next()).Take(15).ToArray();
+        txtSequence.Text = string.Join(", ", keys);
+        LoadKeys(keys, "Claves aleatorias cargadas.");
     }
 
-    private void btnEjemplo_Click(object? sender, EventArgs e)
+    private void btnSample_Click(object? sender, EventArgs e)
     {
-        txtSecuencia.Text = string.Join(", ", BancoDePruebas.ClavesEjemplo);
-        CargarClaves(BancoDePruebas.ClavesEjemplo, "Árbol de ejemplo cargado.");
+        txtSequence.Text = string.Join(", ", TestBench.SampleKeys);
+        LoadKeys(TestBench.SampleKeys, "Árbol de ejemplo cargado.");
     }
 
-    // Al hacer clic sobre un nodo, su clave pasa al cuadro de texto.
-    private void picArbol_MouseClick(object? sender, MouseEventArgs e)
+    // Clicking a node copies its key into the text box.
+    private void picTree_MouseClick(object? sender, MouseEventArgs e)
     {
-        float radio = DibujoArbol.CalcularRadio(_arbol.Cantidad, picArbol.ClientSize);
-        NodoArbol? nodo = DibujoArbol.NodoEn(e.Location, _posiciones, radio);
-        if (nodo is null)
+        float radius = TreeDrawing.CalculateRadius(_tree.Count, picTree.ClientSize);
+        TreeNode? node = TreeDrawing.NodeAt(e.Location, _positions, radius);
+        if (node is null)
             return;
 
-        txtClave.Text = nodo.Clave.ToString();
-        string tipo = nodo.EsHoja ? "hoja" : (nodo.Izquierdo is not null && nodo.Derecho is not null ? "con dos hijos" : "con un hijo");
-        MostrarEstado($"Nodo {nodo.Clave} seleccionado ({tipo}).");
+        txtKey.Text = node.Key.ToString();
+        string kind = node.IsLeaf ? "hoja" : (node.Left is not null && node.Right is not null ? "con dos hijos" : "con un hijo");
+        ShowStatus($"Nodo {node.Key} seleccionado ({kind}).");
     }
 
-    private void picArbol_Paint(object? sender, PaintEventArgs e)
+    private void picTree_Paint(object? sender, PaintEventArgs e)
     {
-        _posiciones = _arbol.Cantidad <= DibujoArbol.MaximoNodosDibujables
-            ? DibujoArbol.CalcularPosiciones(_arbol.Raiz, picArbol.ClientSize)
-            : new Dictionary<NodoArbol, PointF>();
-        DibujoArbol.Dibujar(e.Graphics, picArbol.ClientSize, _arbol, _posiciones, _resaltado);
+        _positions = _tree.Count <= TreeDrawing.MaxDrawableNodes
+            ? TreeDrawing.CalculatePositions(_tree.Root, picTree.ClientSize)
+            : new Dictionary<TreeNode, PointF>();
+        TreeDrawing.Draw(e.Graphics, picTree.ClientSize, _tree, _positions, _highlight);
     }
 
-    private void picArbol_Resize(object? sender, EventArgs e)
+    private void picTree_Resize(object? sender, EventArgs e)
     {
-        picArbol.Invalidate();
+        picTree.Invalidate();
     }
 
-    // Las pruebas y mediciones tardan, así que corren en otro hilo para no congelar la ventana.
-    private async void btnPruebas_Click(object? sender, EventArgs e)
+    // The tests and measurements take a while, so they run on another thread to avoid freezing the window.
+    private async void btnTests_Click(object? sender, EventArgs e)
     {
-        btnPruebas.Enabled = false;
-        txtPruebas.Text = "Ejecutando pruebas y mediciones...";
+        btnTests.Enabled = false;
+        txtTests.Text = "Ejecutando pruebas y mediciones...";
 
         try
         {
-            txtPruebas.Text = await Task.Run(ConstruirReportePruebas);
+            txtTests.Text = await Task.Run(BuildTestReport);
         }
         catch (Exception ex)
         {
-            txtPruebas.Text = "Error inesperado durante las pruebas: " + ex.Message;
+            txtTests.Text = "Error inesperado durante las pruebas: " + ex.Message;
         }
         finally
         {
-            btnPruebas.Enabled = true;
+            btnTests.Enabled = true;
         }
     }
 
-    private static string ConstruirReportePruebas()
+    private static string BuildTestReport()
     {
-        List<PruebaResultado> casos = BancoDePruebas.EjecutarCasos();
-        var lineas = new List<string>();
+        List<TestResult> cases = TestBench.RunCases();
+        var lines = new List<string>();
 
-        foreach (PruebaResultado caso in casos)
-            lineas.Add($"[{(caso.Paso ? "OK" : "FALLA")}] {caso.Caso}: {caso.Detalle}");
+        foreach (TestResult testCase in cases)
+            lines.Add($"[{(testCase.Passed ? "OK" : "FALLA")}] {testCase.Case}: {testCase.Detail}");
 
-        lineas.Add(string.Empty);
-        lineas.Add($"{casos.Count(c => c.Paso)} de {casos.Count} casos aprobados.");
-        lineas.Add(string.Empty);
-        lineas.Add(BancoDePruebas.EjecutarMediciones());
+        lines.Add(string.Empty);
+        lines.Add($"{cases.Count(c => c.Passed)} de {cases.Count} casos aprobados.");
+        lines.Add(string.Empty);
+        lines.Add(TestBench.RunMeasurements());
 
 #if DEBUG
-        lineas.Add("Aviso: el programa está compilado en Debug; los tiempos no son representativos. Usa Release.");
+        lines.Add("Aviso: el programa está compilado en Debug; los tiempos no son representativos. Usa Release.");
 #endif
-        return string.Join(Environment.NewLine, lineas);
+        return string.Join(Environment.NewLine, lines);
     }
 
-    private void CargarClaves(IEnumerable<int> claves, string mensaje)
+    private void LoadKeys(IEnumerable<int> keys, string message)
     {
-        _arbol.Limpiar();
-        int omitidas = 0;
-        foreach (int clave in claves)
+        _tree.Clear();
+        int skipped = 0;
+        foreach (int key in keys)
         {
-            if (!_arbol.Insertar(clave).Exito)
-                omitidas++;
+            if (!_tree.Insert(key).Success)
+                skipped++;
         }
 
-        _resaltado = Resaltado.Ninguno;
-        MostrarEstado(omitidas == 0 ? mensaje : $"{mensaje} Se omitieron {omitidas} claves duplicadas.");
-        ActualizarVista();
+        _highlight = Highlight.None;
+        ShowStatus(skipped == 0 ? message : $"{message} Se omitieron {skipped} claves duplicadas.");
+        UpdateView();
     }
 
-    private bool IntentarLeerClave(out int clave)
+    private bool TryReadKey(out int key)
     {
         try
         {
-            clave = EntradaClaves.LeerClave(txtClave.Text);
+            key = KeyInput.ReadKey(txtKey.Text);
             return true;
         }
         catch (ArgumentException ex)
         {
-            clave = 0;
-            MostrarEstado(ex.Message);
+            key = 0;
+            ShowStatus(ex.Message);
             return false;
         }
     }
 
-    private void ActualizarVista()
+    private void UpdateView()
     {
-        string altura = _arbol.EstaVacio ? "—" : _arbol.Altura().ToString();
-        lblMetricas.Text = $"Nodos: {_arbol.Cantidad}   |   Altura: {altura}";
-        txtRecorridos.Text =
-            $"Preorden:  {Formatear(_arbol.Preorden())}{Environment.NewLine}" +
-            $"Inorden:   {Formatear(_arbol.Inorden())}{Environment.NewLine}" +
-            $"Postorden: {Formatear(_arbol.Postorden())}";
-        picArbol.Invalidate();
+        string height = _tree.IsEmpty ? "—" : _tree.Height().ToString();
+        lblMetrics.Text = $"Nodos: {_tree.Count}   |   Altura: {height}";
+        txtTraversals.Text =
+            $"Preorden:  {FormatKeys(_tree.Preorder())}{Environment.NewLine}" +
+            $"Inorden:   {FormatKeys(_tree.Inorder())}{Environment.NewLine}" +
+            $"Postorden: {FormatKeys(_tree.Postorder())}";
+        picTree.Invalidate();
     }
 
-    private static string Formatear(List<int> claves)
+    private static string FormatKeys(List<int> keys)
     {
-        if (claves.Count == 0)
+        if (keys.Count == 0)
             return "(vacío)";
-        if (claves.Count <= MaximoClavesEnRecorrido)
-            return string.Join(" ", claves);
-        return string.Join(" ", claves.Take(MaximoClavesEnRecorrido)) + $" … ({claves.Count} claves)";
+        if (keys.Count <= MaxKeysInTraversal)
+            return string.Join(" ", keys);
+        return string.Join(" ", keys.Take(MaxKeysInTraversal)) + $" … ({keys.Count} claves)";
     }
 
-    private void MostrarEstado(string mensaje)
+    private void ShowStatus(string message)
     {
-        lblEstado.Text = mensaje;
+        lblStatus.Text = message;
     }
 }
